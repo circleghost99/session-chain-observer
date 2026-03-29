@@ -6,6 +6,9 @@
   "openclaw": {
     "extensions": ["./index.ts"]
   },
+  "scripts": {
+    "serve": "npx tsx server.ts"
+  },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0"
   }

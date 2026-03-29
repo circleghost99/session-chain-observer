@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Chain Observer</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --orange: #d29922; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'SF Mono', 'Menlo', monospace; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
+  a { color: var(--accent); text-decoration: none; }
+
+  /* Layout */
+  .header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .header select, .header input, .header button { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; }
+  .header button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .header button:hover { opacity: 0.9; }
+  .header label { color: var(--text2); font-size: 12px; }
+  .tabs { display: flex; gap: 2px; margin-left: auto; }
+  .tabs button { background: transparent; border: none; color: var(--text2); padding: 6px 12px; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 13px; }
+  .tabs button.active { background: var(--bg3); color: var(--text); }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+
+  /* Session cards (L0) */
+  .sessions { display: grid; gap: 8px; }
+  .session-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; cursor: pointer; transition: border-color 0.15s; }
+  .session-card:hover { border-color: var(--accent); }
+  .session-card.expanded { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .card-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-ok { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-error { background: rgba(248,81,73,0.15); color: var(--red); }
+  .badge-mixed { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .card-key { color: var(--text2); font-size: 12px; word-break: break-all; }
+  .card-stats { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+  .card-stats span { color: var(--text2); font-size: 12px; }
+  .card-stats span b { color: var(--text); }
+  .tools-breakdown { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tool-chip { background: var(--bg3); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text2); }
+  .failed-list { margin-top: 8px; }
+  .failed-item { color: var(--red); font-size: 12px; padding: 2px 0; }
+
+  /* Steps table (L1) */
+  .steps-panel { background: var(--bg2); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; overflow-x: auto; margin-bottom: 8px; }
+  .steps-toolbar { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
+  .steps-toolbar select, .steps-toolbar input { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; font-family: inherit; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 10px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr.step-row { cursor: pointer; transition: background 0.1s; }
+  tr.step-row:hover { background: var(--bg3); }
+  tr.step-error { background: rgba(248,81,73,0.06); }
+  tr.step-error:hover { background: rgba(248,81,73,0.12); }
+  .status-ok { color: var(--green); }
+  .status-error { color: var(--red); font-weight: 600; }
+  .mono { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
+  .truncated { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Detail panel (L2) */
+  .detail-panel { background: var(--bg); border: 1px solid var(--purple); border-radius: 8px; margin: 8px 14px 14px; padding: 16px; }
+  .detail-panel h3 { font-size: 14px; margin-bottom: 12px; color: var(--purple); }
+  .detail-section { margin-bottom: 14px; }
+  .detail-section h4 { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .detail-section pre { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+  .thinking-block { background: rgba(188,140,255,0.06); border-color: rgba(188,140,255,0.2); }
+  .adjacent-steps { display: flex; flex-direction: column; gap: 4px; }
+  .adjacent-step { font-size: 12px; color: var(--text2); padding: 4px 8px; background: var(--bg2); border-radius: 4px; }
+  .cost-info { font-size: 12px; color: var(--text2); }
+
+  /* Patterns panel */
+  .patterns-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .pattern-section { margin-bottom: 16px; }
+  .pattern-section h3 { font-size: 14px; margin-bottom: 8px; }
+  .error-pattern { padding: 8px 12px; background: rgba(248,81,73,0.06); border-left: 3px solid var(--red); border-radius: 4px; margin-bottom: 6px; }
+  .tool-stat-row { display: flex; gap: 20px; padding: 4px 0; font-size: 12px; }
+  .tool-stat-row .name { width: 120px; font-weight: 600; }
+
+  .loading { text-align: center; color: var(--text2); padding: 40px; }
+  .empty { text-align: center; color: var(--text2); padding: 40px; }
+  .hints { margin-top: 12px; padding: 10px 14px; background: rgba(88,166,255,0.06); border-radius: 6px; }
+  .hints p { font-size: 12px; color: var(--accent); margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Session Chain Observer</h1>
+  <select id="agentSelect"><option value="">Loading...</option></select>
+  <label>Hours: <input id="hoursBack" type="number" value="72" style="width:60px"></label>
+  <label>Limit: <input id="limitInput" type="number" value="10" style="width:50px"></label>
+  <button id="loadBtn" onclick="loadSummary()">Load</button>
+  <div class="tabs">
+    <button class="active" onclick="switchTab('sessions', this)">Sessions</button>
+    <button onclick="switchTab('patterns', this)">Patterns</button>
+  </div>
+</div>
+
+<div class="container">
+  <div id="sessionsView"></div>
+  <div id="patternsView" style="display:none"></div>
+</div>
+
+<script>
+const API = '';
+let currentSessions = [];
+let expandedSession = null;
+let expandedStep = null;
+
+// ─── Init ────────────────────────────────────────────────────────────
+
+async function init() {
+  const res = await fetch(API + '/api/agents');
+  const data = await res.json();
+  const sel = document.getElementById('agentSelect');
+  sel.innerHTML = data.agents.map(a => `<option value="${a}">${a}</option>`).join('');
+  loadSummary();
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sessionsView').style.display = tab === 'sessions' ? '' : 'none';
+  document.getElementById('patternsView').style.display = tab === 'patterns' ? '' : 'none';
+  if (tab === 'patterns') loadPatterns();
+}
+
+// ─── L0: Summary ─────────────────────────────────────────────────────
+
+async function loadSummary() {
+  const agentId = document.getElementById('agentSelect').value;
+  const hoursBack = document.getElementById('hoursBack').value;
+  const limit = document.getElementById('limitInput').value;
+  const view = document.getElementById('sessionsView');
+  view.innerHTML = '<div class="loading">Loading sessions...</div>';
+
+  const res = await fetch(`${API}/api/summary?agentId=${agentId}&hoursBack=${hoursBack}&limit=${limit}`);
+  const data = await res.json();
+  currentSessions = data.sessions || [];
+  expandedSession = null;
+  renderSessions(data);
+}
+
+function renderSessions(data) {
+  const view = document.getElementById('sessionsView');
+  if (!data.sessions?.length) {
+    view.innerHTML = '<div class="empty">No sessions found.</div>';
+    return;
+  }
+
+  let html = '<div class="sessions">';
+  for (const s of data.sessions) {
+    const outcomeClass = s.errorSteps > 0 ? (s.outcome === 'mixed' ? 'badge-mixed' : 'badge-error') : 'badge-ok';
+    const outcomeLabel = s.errorSteps > 0 ? `${s.errorSteps} error${s.errorSteps > 1 ? 's' : ''}` : 'ok';
+    const dur = s.runtimeMs > 0 ? (s.runtimeMs / 1000).toFixed(1) + 's' : '-';
+    const isExpanded = expandedSession === s.sessionKey;
+
+    html += `<div class="session-card ${isExpanded ? 'expanded' : ''}" onclick="toggleSession('${esc(s.sessionKey)}')">
+      <div class="card-top">
+        <span class="badge ${outcomeClass}">${outcomeLabel}</span>
+        <b>${s.totalSteps} steps</b>
+        <span class="card-key">${s.sessionKey}</span>
+      </div>
+      <div class="card-stats">
+        <span>Model: <b>${s.model}</b></span>
+        <span>Duration: <b>${dur}</b></span>
+        <span>Tokens: <b>${s.totalTokens?.toLocaleString()}</b></span>
+        <span>Cost: <b>$${s.estimatedCostUsd?.toFixed(2)}</b></span>
+        <span>User msgs: <b>${s.userMessageCount}</b></span>
+      </div>
+      <div class="tools-breakdown">
+        ${Object.entries(s.toolBreakdown || {}).sort((a,b) => b[1] - a[1]).map(([t,c]) => `<span class="tool-chip">${t}(${c})</span>`).join('')}
+      </div>
+      ${s.failedTools?.length ? `<div class="failed-list">${s.failedTools.map(f => `<div class="failed-item">Step ${f.step}: ${f.tool} - ${escHtml(f.snippet)}</div>`).join('')}</div>` : ''}
+      ${s.skillsUsed?.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2)">Skills: ${s.skillsUsed.join(', ')}</div>` : ''}
+    </div>`;
+
+    if (isExpanded) {
+      html += `<div id="steps-${esc(s.sessionKey)}" class="steps-panel"><div class="loading">Loading steps...</div></div>`;
+    }
+  }
+  html += '</div>';
+
+  if (data.hints?.length) {
+    html += `<div class="hints">${data.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+  }
+
+  view.innerHTML = html;
+  if (expandedSession) loadSteps(expandedSession);
+}
+
+// ─── L1: Steps ───────────────────────────────────────────────────────
+
+async function toggleSession(sessionKey) {
+  if (expandedSession === sessionKey) {
+    expandedSession = null;
+    expandedStep = null;
+  } else {
+    expandedSession = sessionKey;
+    expandedStep = null;
+  }
+  renderSessions({ sessions: currentSessions });
+}
+
+async function loadSteps(sessionKey, filter) {
+  const panel = document.getElementById('steps-' + esc(sessionKey));
+  if (!panel) return;
+  panel.innerHTML = '<div class="loading">Loading steps...</div>';
+
+  let url = `${API}/api/steps?sessionKey=${encodeURIComponent(sessionKey)}&limit=500`;
+  if (filter && filter !== 'all') url += `&filter=${filter}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+  renderSteps(panel, sessionKey, data, filter);
+}
+
+function renderSteps(panel, sessionKey, data, currentFilter) {
+  let html = `<div class="steps-toolbar">
+    <select onchange="loadSteps('${esc(sessionKey)}', this.value)">
+      ${['all','errors','slow','expensive'].map(f => `<option value="${f}" ${f === (currentFilter||'all') ? 'selected' : ''}>${f}</option>`).join('')}
+    </select>
+    <span style="color:var(--text2);font-size:12px">${data.totalSteps} steps</span>
+    ${data.modelChanges?.map(mc => `<span style="font-size:11px;color:var(--orange)">Model change at step ${mc.beforeStep}: ${mc.from} → ${mc.to}</span>`).join('') || ''}
+  </div>`;
+
+  html += '<table><thead><tr><th>#</th><th>Tool</th><th>Status</th><th>Dur(ms)</th><th>Cost</th><th>Tokens</th><th>Input</th><th>Output</th></tr></thead><tbody>';
+
+  for (const s of (data.steps || [])) {
+    const errClass = s.isError ? ' step-error' : '';
+    const statusHtml = s.isError ? '<span class="status-error">ERROR</span>' : '<span class="status-ok">ok</span>';
+    const dur = s.durationMs != null ? s.durationMs : '-';
+    const isDetailOpen = expandedStep === s.step;
+
+    html += `<tr class="step-row${errClass}" onclick="toggleDetail('${esc(sessionKey)}', ${s.step})">
+      <td>${s.step}</td>
+      <td><b>${s.tool}</b></td>
+      <td>${statusHtml}</td>
+      <td class="mono">${dur}</td>
+      <td class="mono">$${s.costThisTurn?.toFixed(3)}</td>
+      <td class="mono">${s.tokensThisTurn?.toLocaleString()}</td>
+      <td class="truncated mono" title="${escAttr(s.inputSummary)}">${escHtml(s.inputSummary)}</td>
+      <td class="truncated mono" title="${escAttr(s.outputSummary)}">${escHtml(s.outputSummary)}</td>
+    </tr>`;
+
+    if (isDetailOpen) {
+      html += `<tr><td colspan="8" style="padding:0"><div id="detail-${s.step}" class="detail-panel"><div class="loading">Loading detail...</div></div></td></tr>`;
+    }
+  }
+  html += '</tbody></table>';
+
+  if (data.hints?.length) {
+    html += `<div class="hints">${data.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+  }
+
+  panel.innerHTML = html;
+  if (expandedStep != null) loadDetail(sessionKey, expandedStep);
+}
+
+// ─── L2: Detail ──────────────────────────────────────────────────────
+
+async function toggleDetail(sessionKey, step) {
+  event?.stopPropagation();
+  expandedStep = expandedStep === step ? null : step;
+  loadSteps(sessionKey);
+}
+
+async function loadDetail(sessionKey, step) {
+  const panel = document.getElementById('detail-' + step);
+  if (!panel) return;
+
+  const res = await fetch(`${API}/api/detail?sessionKey=${encodeURIComponent(sessionKey)}&step=${step}`);
+  const d = await res.json();
+  renderDetail(panel, d);
+}
+
+function renderDetail(panel, d) {
+  let html = `<h3>Step ${d.step}: ${d.tool} (${d.isError ? 'ERROR' : 'OK'})</h3>`;
+
+  if (d.parentThinking) {
+    html += `<div class="detail-section"><h4>Agent Thinking (before)</h4><pre class="thinking-block">${escHtml(d.parentThinking)}</pre></div>`;
+  }
+
+  html += `<div class="detail-section"><h4>Input (arguments)</h4><pre>${escHtml(JSON.stringify(d.arguments, null, 2))}</pre></div>`;
+
+  const outputMeta = [];
+  if (d.resultDetails?.exitCode !== undefined) outputMeta.push(`exitCode=${d.resultDetails.exitCode}`);
+  if (d.resultDetails?.durationMs !== undefined) outputMeta.push(`${d.resultDetails.durationMs}ms`);
+  const metaStr = outputMeta.length ? ` (${outputMeta.join(', ')})` : '';
+  const outputText = (d.result || []).map(b => b.text).join('\n');
+  html += `<div class="detail-section"><h4>Output${metaStr}</h4><pre>${escHtml(outputText)}</pre></div>`;
+
+  if (d.reactionThinking) {
+    html += `<div class="detail-section"><h4>Agent Thinking (after)</h4><pre class="thinking-block">${escHtml(d.reactionThinking)}</pre></div>`;
+  }
+
+  if (d.costContext) {
+    html += `<div class="cost-info">Cost: $${d.costContext.thisTurn?.toFixed(4)} this turn, $${d.costContext.cumulative?.toFixed(4)} cumulative</div>`;
+  }
+
+  if (d.adjacentSteps?.length) {
+    html += `<div class="detail-section"><h4>Adjacent Steps</h4><div class="adjacent-steps">`;
+    for (const a of d.adjacentSteps) {
+      const color = a.status === 'error' ? 'var(--red)' : 'var(--text2)';
+      html += `<div class="adjacent-step"><span style="color:${color}">${a.step} ${a.tool} ${a.status}</span> — <span class="mono">${escHtml(a.inputSummary)}</span></div>`;
+    }
+    html += '</div></div>';
+  }
+
+  if (d.hints?.length) {
+    html += `<div class="hints">${d.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+// ─── Patterns ────────────────────────────────────────────────────────
+
+async function loadPatterns() {
+  const agentId = document.getElementById('agentSelect').value;
+  const hoursBack = document.getElementById('hoursBack').value;
+  const view = document.getElementById('patternsView');
+  view.innerHTML = '<div class="loading">Analyzing patterns...</div>';
+
+  const res = await fetch(`${API}/api/patterns?agentId=${agentId}&hoursBack=${hoursBack}`);
+  const d = await res.json();
+  renderPatterns(view, d);
+}
+
+function renderPatterns(view, d) {
+  let html = `<div class="patterns-panel">
+    <h2 style="margin-bottom:16px">Pattern Analysis: ${d.agentId} (${d.sessionsAnalyzed} sessions)</h2>`;
+
+  // Recurring errors
+  html += '<div class="pattern-section"><h3 style="color:var(--red)">Recurring Errors</h3>';
+  if (d.recurringErrors?.length) {
+    for (const e of d.recurringErrors) {
+      html += `<div class="error-pattern">
+        <b>${escHtml(e.pattern)}</b> — ${e.occurrences} sessions<br>
+        <span style="color:var(--accent)">Suggestion: ${escHtml(e.suggestion)}</span>
+      </div>`;
+    }
+  } else {
+    html += '<p style="color:var(--text2)">No recurring error patterns found.</p>';
+  }
+  html += '</div>';
+
+  // Tool usage
+  html += '<div class="pattern-section"><h3>Tool Usage</h3>';
+  const tools = Object.entries(d.toolUsageDistribution || {}).sort((a,b) => b[1].calls - a[1].calls);
+  for (const [name, stat] of tools) {
+    const errRate = stat.errorRate > 0 ? `<span style="color:var(--red)">${Math.round(stat.errorRate * 100)}% error</span>` : '';
+    const dur = stat.avgDurationMs != null ? `avg ${stat.avgDurationMs}ms` : '';
+    html += `<div class="tool-stat-row">
+      <span class="name">${name}</span>
+      <span>${stat.calls} calls</span>
+      <span>${errRate}</span>
+      <span style="color:var(--text2)">${dur}</span>
+    </div>`;
+  }
+  html += '</div>';
+
+  // Cost
+  html += `<div class="pattern-section"><h3>Cost</h3>
+    <p>Total: <b>$${d.costTrend?.totalCost?.toFixed(2)}</b> | Avg/session: <b>$${d.costTrend?.avgPerSession?.toFixed(2)}</b></p>
+    ${d.costTrend?.mostExpensiveSession ? `<p style="color:var(--text2)">Most expensive: ${d.costTrend.mostExpensiveSession.key.slice(-50)}... ($${d.costTrend.mostExpensiveSession.cost.toFixed(2)})</p>` : ''}
+  </div>`;
+
+  if (d.hints?.length) {
+    html += `<div class="hints">${d.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+  }
+
+  html += '</div>';
+  view.innerHTML = html;
+}
+
+// ─── Utils ───────────────────────────────────────────────────────────
+
+function esc(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
