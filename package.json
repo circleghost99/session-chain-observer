@@ -1,0 +1,12 @@
+{
+  "name": "session-chain-observer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "session-chain-observer",
+  "name": "Session Chain Observer",
+  "description": "Progressive-disclosure tools for observing and diagnosing agent session execution chains. Designed for skill-optimizer to analyze tool call patterns, errors, and performance.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxStepsPerPage": {
+        "type": "number",
+        "description": "Max steps returned per page in chain_steps. Default: 50."
+      },
+      "maxDetailChars": {
+        "type": "number",
+        "description": "Max chars for full tool output in chain_detail. Default: 8000."
+      },
+      "summaryInputChars": {
+        "type": "number",
+        "description": "Max chars for input summaries in chain_steps. Default: 120."
+      },
+      "summaryOutputChars": {
+        "type": "number",
+        "description": "Max chars for output summaries in chain_steps. Default: 200."
+      },
+      "debug": {
+        "type": "boolean",
+        "description": "Enable debug logging. Default: false."
+      }
+    }
+  }
+}
