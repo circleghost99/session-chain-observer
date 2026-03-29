@@ -6,95 +6,170 @@
 <title>Session Chain Observer</title>
 <style>
   :root {
-    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
-    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
-    --red: #f85149; --orange: #d29922; --purple: #bc8cff;
+    --bg: #0f1117; --bg2: #171b24; --bg3: #1e2330; --bg4: #262d3d;
+    --border: #2a3040; --text: #e2e8f0; --text2: #8892a4; --text3: #5a6478;
+    --accent: #6ea8fe; --green: #4ade80; --red: #f87171; --orange: #fbbf24;
+    --purple: #c084fc; --cyan: #22d3ee; --pink: #f472b6; --blue: #60a5fa;
+    --radius: 10px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, 'SF Mono', 'Menlo', monospace; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
-  a { color: var(--accent); text-decoration: none; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+  code, .mono { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace; }
 
-  /* Layout */
-  .header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10; }
-  .header h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
-  .header select, .header input, .header button { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; }
-  .header button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-  .header button:hover { opacity: 0.9; }
-  .header label { color: var(--text2); font-size: 12px; }
-  .tabs { display: flex; gap: 2px; margin-left: auto; }
-  .tabs button { background: transparent; border: none; color: var(--text2); padding: 6px 12px; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 13px; }
-  .tabs button.active { background: var(--bg3); color: var(--text); }
+  /* Header */
+  .header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
+  .header h1 { font-size: 16px; font-weight: 700; white-space: nowrap; background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .ctrl { display: flex; align-items: center; gap: 6px; }
+  .ctrl label { color: var(--text2); font-size: 12px; }
+  select, input[type=number] { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+  select:focus, input:focus { border-color: var(--accent); }
+  .btn { cursor: pointer; border: none; border-radius: 6px; padding: 7px 16px; font-size: 13px; font-weight: 600; font-family: inherit; transition: all .15s; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { filter: brightness(1.15); }
+  .tabs { display: flex; gap: 2px; margin-left: auto; background: var(--bg3); border-radius: 8px; padding: 2px; }
+  .tabs button { background: transparent; border: none; color: var(--text2); padding: 6px 14px; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 13px; transition: all .15s; }
+  .tabs button.active { background: var(--bg4); color: var(--text); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px 24px; }
 
-  .container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+  /* Session cards */
+  .sessions { display: grid; gap: 10px; }
+  .session-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; cursor: pointer; transition: all .2s; }
+  .session-card:hover { border-color: rgba(110,168,254,0.4); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  .session-card.expanded { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: 0 4px 20px rgba(110,168,254,0.1); }
 
-  /* Session cards (L0) */
-  .sessions { display: grid; gap: 8px; }
-  .session-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; cursor: pointer; transition: border-color 0.15s; }
-  .session-card:hover { border-color: var(--accent); }
-  .session-card.expanded { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-  .card-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-  .badge-ok { background: rgba(63,185,80,0.15); color: var(--green); }
-  .badge-error { background: rgba(248,81,73,0.15); color: var(--red); }
-  .badge-mixed { background: rgba(210,153,34,0.15); color: var(--orange); }
-  .card-key { color: var(--text2); font-size: 12px; word-break: break-all; }
-  .card-stats { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
-  .card-stats span { color: var(--text2); font-size: 12px; }
-  .card-stats span b { color: var(--text); }
-  .tools-breakdown { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
-  .tool-chip { background: var(--bg3); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text2); }
-  .failed-list { margin-top: 8px; }
-  .failed-item { color: var(--red); font-size: 12px; padding: 2px 0; }
+  .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .outcome-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .outcome-dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(74,222,128,0.4); }
+  .outcome-dot.error { background: var(--red); box-shadow: 0 0 8px rgba(248,113,113,0.4); }
+  .outcome-dot.mixed { background: var(--orange); box-shadow: 0 0 8px rgba(251,191,36,0.4); }
+  .card-title { font-weight: 600; font-size: 14px; }
+  .card-time { color: var(--text2); font-size: 12px; margin-left: auto; white-space: nowrap; }
 
-  /* Steps table (L1) */
-  .steps-panel { background: var(--bg2); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; overflow-x: auto; margin-bottom: 8px; }
-  .steps-toolbar { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
-  .steps-toolbar select, .steps-toolbar input { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; font-family: inherit; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; padding: 8px 10px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); }
-  td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  tr.step-row { cursor: pointer; transition: background 0.1s; }
-  tr.step-row:hover { background: var(--bg3); }
-  tr.step-error { background: rgba(248,81,73,0.06); }
-  tr.step-error:hover { background: rgba(248,81,73,0.12); }
-  .status-ok { color: var(--green); }
-  .status-error { color: var(--red); font-weight: 600; }
-  .mono { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
-  .truncated { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-metrics { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .metric { background: var(--bg3); padding: 4px 10px; border-radius: 6px; font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 4px; }
+  .metric b { color: var(--text); }
+  .metric .icon { font-size: 13px; }
 
-  /* Detail panel (L2) */
-  .detail-panel { background: var(--bg); border: 1px solid var(--purple); border-radius: 8px; margin: 8px 14px 14px; padding: 16px; }
-  .detail-panel h3 { font-size: 14px; margin-bottom: 12px; color: var(--purple); }
-  .detail-section { margin-bottom: 14px; }
-  .detail-section h4 { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
-  .detail-section pre { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
-  .thinking-block { background: rgba(188,140,255,0.06); border-color: rgba(188,140,255,0.2); }
-  .adjacent-steps { display: flex; flex-direction: column; gap: 4px; }
-  .adjacent-step { font-size: 12px; color: var(--text2); padding: 4px 8px; background: var(--bg2); border-radius: 4px; }
-  .cost-info { font-size: 12px; color: var(--text2); }
+  /* Mini timeline bar on session cards */
+  .mini-timeline { display: flex; gap: 1px; height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .mini-timeline .tick { flex: 1; min-width: 2px; }
+  .mini-timeline .tick-ok { background: var(--green); opacity: 0.5; }
+  .mini-timeline .tick-err { background: var(--red); }
 
-  /* Patterns panel */
-  .patterns-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
-  .pattern-section { margin-bottom: 16px; }
-  .pattern-section h3 { font-size: 14px; margin-bottom: 8px; }
-  .error-pattern { padding: 8px 12px; background: rgba(248,81,73,0.06); border-left: 3px solid var(--red); border-radius: 4px; margin-bottom: 6px; }
-  .tool-stat-row { display: flex; gap: 20px; padding: 4px 0; font-size: 12px; }
-  .tool-stat-row .name { width: 120px; font-weight: 600; }
+  .tools-bar { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tool-pill { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; border: 1px solid; }
+  .failed-list { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+  .failed-item { font-size: 12px; padding: 5px 10px; background: rgba(248,113,113,0.08); border-left: 3px solid var(--red); border-radius: 4px; color: var(--text2); }
+  .failed-item b { color: var(--red); }
+  .skills-row { font-size: 11px; color: var(--text3); margin-top: 6px; }
 
-  .loading { text-align: center; color: var(--text2); padding: 40px; }
-  .empty { text-align: center; color: var(--text2); padding: 40px; }
-  .hints { margin-top: 12px; padding: 10px 14px; background: rgba(88,166,255,0.06); border-radius: 6px; }
-  .hints p { font-size: 12px; color: var(--accent); margin: 2px 0; }
+  /* Steps panel */
+  .steps-panel { background: var(--bg2); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 var(--radius) var(--radius); margin-bottom: 10px; overflow: hidden; }
+  .steps-toolbar { display: flex; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; background: var(--bg3); }
+  .steps-toolbar select { font-size: 12px; padding: 4px 8px; }
+  .model-change-tag { font-size: 11px; color: var(--orange); background: rgba(251,191,36,0.1); padding: 2px 8px; border-radius: 4px; }
+
+  /* Visual timeline (L1) */
+  .timeline { padding: 8px 0; }
+  .tl-row { display: flex; align-items: stretch; cursor: pointer; transition: background .1s; padding: 0 16px; }
+  .tl-row:hover { background: var(--bg3); }
+  .tl-row.is-error { background: rgba(248,113,113,0.04); }
+  .tl-row.is-error:hover { background: rgba(248,113,113,0.08); }
+
+  .tl-gutter { width: 48px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding: 0 4px; }
+  .tl-num { font-size: 11px; color: var(--text3); padding-top: 10px; }
+  .tl-line { flex: 1; width: 2px; background: var(--border); margin: 4px 0; }
+  .tl-row:last-child .tl-line { display: none; }
+
+  .tl-node { width: 10px; height: 10px; border-radius: 50%; margin-top: 12px; flex-shrink: 0; border: 2px solid; }
+
+  .tl-body { flex: 1; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--border); min-width: 0; }
+  .tl-row:last-child .tl-body { border-bottom: none; }
+
+  .tl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tl-tool { font-weight: 600; font-size: 13px; padding: 1px 8px; border-radius: 4px; }
+  .tl-status { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+  .tl-status.ok { color: var(--green); background: rgba(74,222,128,0.1); }
+  .tl-status.error { color: var(--red); background: rgba(248,113,113,0.15); }
+  .tl-dur { font-size: 11px; color: var(--text3); font-family: 'SF Mono', monospace; }
+  .tl-cost { font-size: 11px; color: var(--text3); font-family: 'SF Mono', monospace; margin-left: auto; }
+
+  .tl-io { margin-top: 4px; display: flex; gap: 12px; font-size: 12px; color: var(--text2); }
+  .tl-input, .tl-output { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'SF Mono', monospace; font-size: 11px; }
+  .tl-input::before { content: ''; font-size: 10px; margin-right: 4px; }
+  .tl-output::before { content: ''; font-size: 10px; margin-right: 4px; }
+  .tl-output.has-error { color: var(--red); }
+
+  /* Detail panel */
+  .detail-wrap { padding: 0 16px 16px 60px; }
+  .detail-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; animation: slideDown .2s ease; }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .detail-header { padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .detail-header h3 { font-size: 14px; font-weight: 600; }
+  .detail-header .status-badge { padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .detail-header .status-badge.ok { background: rgba(74,222,128,0.12); color: var(--green); }
+  .detail-header .status-badge.error { background: rgba(248,113,113,0.12); color: var(--red); }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .detail-col { border-right: 1px solid var(--border); }
+  .detail-col:last-child { border-right: none; }
+  .detail-col.full { grid-column: 1 / -1; }
+
+  .detail-section { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .detail-section:last-child { border-bottom: none; }
+  .detail-section h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .detail-section pre { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 11px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-height: 350px; overflow-y: auto; }
+  .thinking-pre { background: rgba(192,132,252,0.05); border-color: rgba(192,132,252,0.15); }
+
+  .meta-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .meta-pill { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: var(--bg3); color: var(--text2); }
+
+  .adj-step { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 3px; background: var(--bg2); }
+  .adj-step .adj-num { width: 28px; text-align: center; font-weight: 600; font-size: 11px; }
+  .adj-step .adj-tool { font-weight: 500; width: 70px; }
+  .adj-step .adj-input { flex: 1; color: var(--text2); font-family: 'SF Mono', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Patterns */
+  .patterns-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 800px) { .patterns-grid { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
+  .pat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .pat-card h3 { font-size: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .err-item { padding: 10px 14px; background: rgba(248,113,113,0.05); border-left: 3px solid var(--red); border-radius: 6px; margin-bottom: 8px; }
+  .err-item .pattern-name { font-weight: 600; font-size: 13px; }
+  .err-item .pattern-count { color: var(--text2); font-size: 12px; }
+  .err-item .pattern-fix { color: var(--accent); font-size: 12px; margin-top: 4px; }
+
+  .tool-bar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .tool-bar-row .tb-name { width: 100px; font-weight: 500; font-size: 13px; }
+  .tool-bar-row .tb-bar { flex: 1; height: 8px; background: var(--bg4); border-radius: 4px; overflow: hidden; }
+  .tool-bar-row .tb-fill { height: 100%; border-radius: 4px; }
+  .tool-bar-row .tb-label { width: 80px; text-align: right; font-size: 12px; color: var(--text2); }
+
+  .cost-big { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, var(--green), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+  .loading { text-align: center; color: var(--text2); padding: 48px; }
+  .empty { text-align: center; color: var(--text3); padding: 48px; font-size: 15px; }
+  .hints-bar { margin-top: 14px; padding: 10px 16px; background: rgba(110,168,254,0.06); border-radius: 8px; border: 1px solid rgba(110,168,254,0.12); }
+  .hints-bar p { font-size: 12px; color: var(--accent); margin: 3px 0; }
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>Session Chain Observer</h1>
-  <select id="agentSelect"><option value="">Loading...</option></select>
-  <label>Hours: <input id="hoursBack" type="number" value="72" style="width:60px"></label>
-  <label>Limit: <input id="limitInput" type="number" value="10" style="width:50px"></label>
-  <button id="loadBtn" onclick="loadSummary()">Load</button>
+  <div class="ctrl">
+    <select id="agentSelect" style="min-width:160px"><option value="">Loading...</option></select>
+  </div>
+  <div class="ctrl">
+    <label>Hours</label>
+    <input id="hoursBack" type="number" value="72" style="width:58px">
+  </div>
+  <div class="ctrl">
+    <label>Limit</label>
+    <input id="limitInput" type="number" value="10" style="width:50px">
+  </div>
+  <button class="btn btn-primary" onclick="loadSummary()">Load</button>
   <div class="tabs">
     <button class="active" onclick="switchTab('sessions', this)">Sessions</button>
     <button onclick="switchTab('patterns', this)">Patterns</button>
@@ -108,11 +183,37 @@
 
 <script>
 const API = '';
+const TOOL_COLORS = {
+  exec: { bg: 'rgba(96,165,250,0.12)', fg: '#60a5fa', border: 'rgba(96,165,250,0.3)' },
+  read: { bg: 'rgba(74,222,128,0.12)', fg: '#4ade80', border: 'rgba(74,222,128,0.3)' },
+  write: { bg: 'rgba(251,191,36,0.12)', fg: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
+  edit: { bg: 'rgba(244,114,182,0.12)', fg: '#f472b6', border: 'rgba(244,114,182,0.3)' },
+  message: { bg: 'rgba(192,132,252,0.12)', fg: '#c084fc', border: 'rgba(192,132,252,0.3)' },
+  sessions_spawn: { bg: 'rgba(34,211,238,0.12)', fg: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
+  sessions_send: { bg: 'rgba(34,211,238,0.12)', fg: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
+  sessions_list: { bg: 'rgba(34,211,238,0.12)', fg: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
+  sessions_history: { bg: 'rgba(34,211,238,0.12)', fg: '#22d3ee', border: 'rgba(34,211,238,0.3)' },
+  memory_store: { bg: 'rgba(251,146,60,0.12)', fg: '#fb923c', border: 'rgba(251,146,60,0.3)' },
+  memory_recall: { bg: 'rgba(251,146,60,0.12)', fg: '#fb923c', border: 'rgba(251,146,60,0.3)' },
+  process: { bg: 'rgba(148,163,184,0.12)', fg: '#94a3b8', border: 'rgba(148,163,184,0.3)' },
+};
+const DEFAULT_TC = { bg: 'rgba(148,163,184,0.1)', fg: '#94a3b8', border: 'rgba(148,163,184,0.2)' };
+
+function tc(tool) { return TOOL_COLORS[tool] || DEFAULT_TC; }
+
 let currentSessions = [];
 let expandedSession = null;
 let expandedStep = null;
+let stepsCache = {};
 
-// ─── Init ────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso), now = Date.now(), diff = now - d.getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return Math.floor(diff/86400000) + 'd ago';
+}
 
 async function init() {
   const res = await fetch(API + '/api/agents');
@@ -130,192 +231,218 @@ function switchTab(tab, btn) {
   if (tab === 'patterns') loadPatterns();
 }
 
-// ─── L0: Summary ─────────────────────────────────────────────────────
+// ─── L0 ──────────────────────────────────────────────────────────────
 
 async function loadSummary() {
   const agentId = document.getElementById('agentSelect').value;
   const hoursBack = document.getElementById('hoursBack').value;
   const limit = document.getElementById('limitInput').value;
   const view = document.getElementById('sessionsView');
-  view.innerHTML = '<div class="loading">Loading sessions...</div>';
+  view.innerHTML = '<div class="loading">Loading...</div>';
 
   const res = await fetch(`${API}/api/summary?agentId=${agentId}&hoursBack=${hoursBack}&limit=${limit}`);
   const data = await res.json();
   currentSessions = data.sessions || [];
   expandedSession = null;
-  renderSessions(data);
+  stepsCache = {};
+  renderSessions();
 }
 
-function renderSessions(data) {
+function renderSessions() {
   const view = document.getElementById('sessionsView');
-  if (!data.sessions?.length) {
-    view.innerHTML = '<div class="empty">No sessions found.</div>';
-    return;
-  }
+  if (!currentSessions.length) { view.innerHTML = '<div class="empty">No sessions found</div>'; return; }
 
   let html = '<div class="sessions">';
-  for (const s of data.sessions) {
-    const outcomeClass = s.errorSteps > 0 ? (s.outcome === 'mixed' ? 'badge-mixed' : 'badge-error') : 'badge-ok';
-    const outcomeLabel = s.errorSteps > 0 ? `${s.errorSteps} error${s.errorSteps > 1 ? 's' : ''}` : 'ok';
+  for (const s of currentSessions) {
+    const oc = s.errorSteps > 0 ? (s.outcome === 'mixed' ? 'mixed' : 'error') : 'ok';
     const dur = s.runtimeMs > 0 ? (s.runtimeMs / 1000).toFixed(1) + 's' : '-';
-    const isExpanded = expandedSession === s.sessionKey;
+    const isExp = expandedSession === s.sessionKey;
+    const shortKey = s.sessionKey.replace(/^agent:/, '').replace(/:/g, ' / ');
 
-    html += `<div class="session-card ${isExpanded ? 'expanded' : ''}" onclick="toggleSession('${esc(s.sessionKey)}')">
-      <div class="card-top">
-        <span class="badge ${outcomeClass}">${outcomeLabel}</span>
-        <b>${s.totalSteps} steps</b>
-        <span class="card-key">${s.sessionKey}</span>
+    html += `<div class="session-card ${isExp ? 'expanded' : ''}" onclick="toggleSession('${esc(s.sessionKey)}')">
+      <div class="card-header">
+        <span class="outcome-dot ${oc}"></span>
+        <span class="card-title">${escHtml(shortKey)}</span>
+        <span class="card-time">${timeAgo(s.startedAt)}</span>
       </div>
-      <div class="card-stats">
-        <span>Model: <b>${s.model}</b></span>
-        <span>Duration: <b>${dur}</b></span>
-        <span>Tokens: <b>${s.totalTokens?.toLocaleString()}</b></span>
-        <span>Cost: <b>$${s.estimatedCostUsd?.toFixed(2)}</b></span>
-        <span>User msgs: <b>${s.userMessageCount}</b></span>
+      <div class="mini-timeline">${buildMiniTimeline(s)}</div>
+      <div class="card-metrics">
+        <span class="metric"><span class="icon">&#9881;</span> <b>${s.totalSteps}</b> steps</span>
+        ${s.errorSteps > 0 ? `<span class="metric" style="color:var(--red)"><span class="icon">&#10007;</span> <b>${s.errorSteps}</b> errors</span>` : ''}
+        <span class="metric"><span class="icon">&#9201;</span> <b>${dur}</b></span>
+        <span class="metric"><span class="icon">&#128176;</span> <b>$${s.estimatedCostUsd?.toFixed(2)}</b></span>
+        <span class="metric">Tokens: <b>${(s.totalTokens/1000).toFixed(0)}k</b></span>
+        <span class="metric">Model: <b>${s.model}</b></span>
       </div>
-      <div class="tools-breakdown">
-        ${Object.entries(s.toolBreakdown || {}).sort((a,b) => b[1] - a[1]).map(([t,c]) => `<span class="tool-chip">${t}(${c})</span>`).join('')}
+      <div class="tools-bar">
+        ${Object.entries(s.toolBreakdown||{}).sort((a,b)=>b[1]-a[1]).map(([t,c])=>{const cl=tc(t);return `<span class="tool-pill" style="background:${cl.bg};color:${cl.fg};border-color:${cl.border}">${t} ${c}</span>`;}).join('')}
       </div>
-      ${s.failedTools?.length ? `<div class="failed-list">${s.failedTools.map(f => `<div class="failed-item">Step ${f.step}: ${f.tool} - ${escHtml(f.snippet)}</div>`).join('')}</div>` : ''}
-      ${s.skillsUsed?.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2)">Skills: ${s.skillsUsed.join(', ')}</div>` : ''}
+      ${s.failedTools?.length ? `<div class="failed-list">${s.failedTools.map(f=>`<div class="failed-item"><b>Step ${f.step}</b> ${f.tool} &mdash; ${escHtml(f.snippet)}</div>`).join('')}</div>` : ''}
+      ${s.skillsUsed?.length ? `<div class="skills-row">Skills: ${s.skillsUsed.join(', ')}</div>` : ''}
     </div>`;
 
-    if (isExpanded) {
-      html += `<div id="steps-${esc(s.sessionKey)}" class="steps-panel"><div class="loading">Loading steps...</div></div>`;
+    if (isExp) {
+      html += `<div id="steps-${css(s.sessionKey)}" class="steps-panel"><div class="loading">Loading...</div></div>`;
     }
   }
   html += '</div>';
-
-  if (data.hints?.length) {
-    html += `<div class="hints">${data.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
-  }
-
   view.innerHTML = html;
   if (expandedSession) loadSteps(expandedSession);
 }
 
-// ─── L1: Steps ───────────────────────────────────────────────────────
-
-async function toggleSession(sessionKey) {
-  if (expandedSession === sessionKey) {
-    expandedSession = null;
-    expandedStep = null;
-  } else {
-    expandedSession = sessionKey;
-    expandedStep = null;
+function buildMiniTimeline(s) {
+  if (!s.totalSteps) return '';
+  const total = s.totalSteps;
+  const failSteps = new Set((s.failedTools||[]).map(f=>f.step));
+  let ticks = '';
+  for (let i = 1; i <= total; i++) {
+    ticks += `<span class="tick ${failSteps.has(i) ? 'tick-err' : 'tick-ok'}"></span>`;
   }
-  renderSessions({ sessions: currentSessions });
+  return ticks;
 }
 
-async function loadSteps(sessionKey, filter) {
-  const panel = document.getElementById('steps-' + esc(sessionKey));
+// ─── L1 ──────────────────────────────────────────────────────────────
+
+function toggleSession(sk) {
+  if (expandedSession === sk) { expandedSession = null; expandedStep = null; }
+  else { expandedSession = sk; expandedStep = null; }
+  renderSessions();
+}
+
+async function loadSteps(sk, filter) {
+  const panel = document.getElementById('steps-' + css(sk));
   if (!panel) return;
-  panel.innerHTML = '<div class="loading">Loading steps...</div>';
+  panel.innerHTML = '<div class="loading">Loading...</div>';
 
-  let url = `${API}/api/steps?sessionKey=${encodeURIComponent(sessionKey)}&limit=500`;
+  let url = `${API}/api/steps?sessionKey=${encodeURIComponent(sk)}&limit=500`;
   if (filter && filter !== 'all') url += `&filter=${filter}`;
-
   const res = await fetch(url);
   const data = await res.json();
-  renderSteps(panel, sessionKey, data, filter);
+  stepsCache[sk] = data;
+  renderTimeline(panel, sk, data, filter);
 }
 
-function renderSteps(panel, sessionKey, data, currentFilter) {
+function renderTimeline(panel, sk, data, currentFilter) {
   let html = `<div class="steps-toolbar">
-    <select onchange="loadSteps('${esc(sessionKey)}', this.value)">
-      ${['all','errors','slow','expensive'].map(f => `<option value="${f}" ${f === (currentFilter||'all') ? 'selected' : ''}>${f}</option>`).join('')}
+    <select onchange="loadSteps('${esc(sk)}', this.value)">
+      ${['all','errors','slow','expensive'].map(f=>`<option value="${f}" ${f===(currentFilter||'all')?'selected':''}>${({all:'All',errors:'Errors only',slow:'Slow (>5s)',expensive:'Expensive (>$0.10)'})[f]}</option>`).join('')}
     </select>
     <span style="color:var(--text2);font-size:12px">${data.totalSteps} steps</span>
-    ${data.modelChanges?.map(mc => `<span style="font-size:11px;color:var(--orange)">Model change at step ${mc.beforeStep}: ${mc.from} → ${mc.to}</span>`).join('') || ''}
+    ${(data.modelChanges||[]).map(mc=>`<span class="model-change-tag">Model switch at #${mc.beforeStep}: ${mc.from} &rarr; ${mc.to}</span>`).join('')}
   </div>`;
 
-  html += '<table><thead><tr><th>#</th><th>Tool</th><th>Status</th><th>Dur(ms)</th><th>Cost</th><th>Tokens</th><th>Input</th><th>Output</th></tr></thead><tbody>';
+  html += '<div class="timeline">';
+  for (const s of (data.steps||[])) {
+    const cl = tc(s.tool);
+    const isErr = s.isError;
+    const isOpen = expandedStep === s.step;
 
-  for (const s of (data.steps || [])) {
-    const errClass = s.isError ? ' step-error' : '';
-    const statusHtml = s.isError ? '<span class="status-error">ERROR</span>' : '<span class="status-ok">ok</span>';
-    const dur = s.durationMs != null ? s.durationMs : '-';
-    const isDetailOpen = expandedStep === s.step;
+    html += `<div class="tl-row ${isErr ? 'is-error' : ''}" onclick="toggleDetail('${esc(sk)}', ${s.step}, event)">
+      <div class="tl-gutter">
+        <span class="tl-num">${s.step}</span>
+        <div class="tl-line"></div>
+      </div>
+      <span class="tl-node" style="background:${isErr ? 'var(--red)' : cl.fg};border-color:${isErr ? 'var(--red)' : cl.fg}"></span>
+      <div class="tl-body">
+        <div class="tl-head">
+          <span class="tl-tool" style="background:${cl.bg};color:${cl.fg}">${s.tool}</span>
+          <span class="tl-status ${isErr ? 'error' : 'ok'}">${isErr ? 'ERROR' : 'OK'}</span>
+          ${s.durationMs != null ? `<span class="tl-dur">${s.durationMs}ms</span>` : ''}
+          <span class="tl-cost">$${s.costThisTurn?.toFixed(3)} &middot; ${(s.tokensThisTurn/1000).toFixed(1)}k tok</span>
+        </div>
+        <div class="tl-io">
+          <span class="tl-input" title="${escAttr(s.inputSummary)}">${escHtml(s.inputSummary)}</span>
+          <span class="tl-output ${isErr ? 'has-error' : ''}" title="${escAttr(s.outputSummary)}">${escHtml(s.outputSummary)}</span>
+        </div>
+      </div>
+    </div>`;
 
-    html += `<tr class="step-row${errClass}" onclick="toggleDetail('${esc(sessionKey)}', ${s.step})">
-      <td>${s.step}</td>
-      <td><b>${s.tool}</b></td>
-      <td>${statusHtml}</td>
-      <td class="mono">${dur}</td>
-      <td class="mono">$${s.costThisTurn?.toFixed(3)}</td>
-      <td class="mono">${s.tokensThisTurn?.toLocaleString()}</td>
-      <td class="truncated mono" title="${escAttr(s.inputSummary)}">${escHtml(s.inputSummary)}</td>
-      <td class="truncated mono" title="${escAttr(s.outputSummary)}">${escHtml(s.outputSummary)}</td>
-    </tr>`;
-
-    if (isDetailOpen) {
-      html += `<tr><td colspan="8" style="padding:0"><div id="detail-${s.step}" class="detail-panel"><div class="loading">Loading detail...</div></div></td></tr>`;
+    if (isOpen) {
+      html += `<div class="detail-wrap"><div id="detail-${s.step}" class="detail-panel"><div class="loading">Loading...</div></div></div>`;
     }
   }
-  html += '</tbody></table>';
-
-  if (data.hints?.length) {
-    html += `<div class="hints">${data.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
-  }
-
+  html += '</div>';
   panel.innerHTML = html;
-  if (expandedStep != null) loadDetail(sessionKey, expandedStep);
+  if (expandedStep != null) loadDetail(sk, expandedStep);
 }
 
-// ─── L2: Detail ──────────────────────────────────────────────────────
+// ─── L2 ──────────────────────────────────────────────────────────────
 
-async function toggleDetail(sessionKey, step) {
-  event?.stopPropagation();
+function toggleDetail(sk, step, ev) {
+  ev?.stopPropagation();
   expandedStep = expandedStep === step ? null : step;
-  loadSteps(sessionKey);
+  const data = stepsCache[sk];
+  if (data) {
+    const panel = document.getElementById('steps-' + css(sk));
+    if (panel) renderTimeline(panel, sk, data);
+  }
 }
 
-async function loadDetail(sessionKey, step) {
+async function loadDetail(sk, step) {
   const panel = document.getElementById('detail-' + step);
   if (!panel) return;
-
-  const res = await fetch(`${API}/api/detail?sessionKey=${encodeURIComponent(sessionKey)}&step=${step}`);
+  const res = await fetch(`${API}/api/detail?sessionKey=${encodeURIComponent(sk)}&step=${step}`);
   const d = await res.json();
   renderDetail(panel, d);
 }
 
 function renderDetail(panel, d) {
-  let html = `<h3>Step ${d.step}: ${d.tool} (${d.isError ? 'ERROR' : 'OK'})</h3>`;
+  const isErr = d.isError;
+  const cl = tc(d.tool);
 
+  let html = `<div class="detail-header">
+    <span class="tl-tool" style="background:${cl.bg};color:${cl.fg}">${d.tool}</span>
+    <h3>Step ${d.step}</h3>
+    <span class="status-badge ${isErr ? 'error' : 'ok'}">${isErr ? 'ERROR' : 'OK'}</span>
+    <div style="margin-left:auto" class="meta-pills">
+      ${d.resultDetails?.exitCode !== undefined ? `<span class="meta-pill">exit: ${d.resultDetails.exitCode}</span>` : ''}
+      ${d.resultDetails?.durationMs !== undefined ? `<span class="meta-pill">${d.resultDetails.durationMs}ms</span>` : ''}
+      ${d.costContext ? `<span class="meta-pill">$${d.costContext.thisTurn?.toFixed(4)} this turn</span><span class="meta-pill">$${d.costContext.cumulative?.toFixed(4)} cumulative</span>` : ''}
+    </div>
+  </div>`;
+
+  html += '<div class="detail-grid">';
+
+  // Left: Input
+  html += '<div class="detail-col"><div class="detail-section"><h4>Input</h4>';
+  html += `<pre>${escHtml(JSON.stringify(d.arguments, null, 2))}</pre></div></div>`;
+
+  // Right: Output
+  const outText = (d.result||[]).map(b=>b.text).join('\\n');
+  html += `<div class="detail-col"><div class="detail-section"><h4>Output</h4><pre${isErr ? ' style="border-color:rgba(248,113,113,0.3)"' : ''}>${escHtml(outText)}</pre></div></div>`;
+
+  // Thinking (before)
   if (d.parentThinking) {
-    html += `<div class="detail-section"><h4>Agent Thinking (before)</h4><pre class="thinking-block">${escHtml(d.parentThinking)}</pre></div>`;
+    html += `<div class="detail-col full"><div class="detail-section"><h4>Agent Thinking (before call)</h4><pre class="thinking-pre">${escHtml(d.parentThinking)}</pre></div></div>`;
   }
 
-  html += `<div class="detail-section"><h4>Input (arguments)</h4><pre>${escHtml(JSON.stringify(d.arguments, null, 2))}</pre></div>`;
-
-  const outputMeta = [];
-  if (d.resultDetails?.exitCode !== undefined) outputMeta.push(`exitCode=${d.resultDetails.exitCode}`);
-  if (d.resultDetails?.durationMs !== undefined) outputMeta.push(`${d.resultDetails.durationMs}ms`);
-  const metaStr = outputMeta.length ? ` (${outputMeta.join(', ')})` : '';
-  const outputText = (d.result || []).map(b => b.text).join('\n');
-  html += `<div class="detail-section"><h4>Output${metaStr}</h4><pre>${escHtml(outputText)}</pre></div>`;
-
+  // Thinking (after)
   if (d.reactionThinking) {
-    html += `<div class="detail-section"><h4>Agent Thinking (after)</h4><pre class="thinking-block">${escHtml(d.reactionThinking)}</pre></div>`;
+    html += `<div class="detail-col full"><div class="detail-section"><h4>Agent Thinking (after result)</h4><pre class="thinking-pre">${escHtml(d.reactionThinking)}</pre></div></div>`;
   }
 
-  if (d.costContext) {
-    html += `<div class="cost-info">Cost: $${d.costContext.thisTurn?.toFixed(4)} this turn, $${d.costContext.cumulative?.toFixed(4)} cumulative</div>`;
-  }
-
+  // Adjacent
   if (d.adjacentSteps?.length) {
-    html += `<div class="detail-section"><h4>Adjacent Steps</h4><div class="adjacent-steps">`;
+    html += '<div class="detail-col full"><div class="detail-section"><h4>Context (adjacent steps)</h4>';
     for (const a of d.adjacentSteps) {
-      const color = a.status === 'error' ? 'var(--red)' : 'var(--text2)';
-      html += `<div class="adjacent-step"><span style="color:${color}">${a.step} ${a.tool} ${a.status}</span> — <span class="mono">${escHtml(a.inputSummary)}</span></div>`;
+      const acl = tc(a.tool);
+      const aErr = a.status === 'error';
+      html += `<div class="adj-step">
+        <span class="adj-num" style="color:${aErr ? 'var(--red)' : 'var(--text2)'}">#${a.step}</span>
+        <span class="adj-tool" style="color:${acl.fg}">${a.tool}</span>
+        <span class="tl-status ${a.status}" style="font-size:10px">${a.status.toUpperCase()}</span>
+        <span class="adj-input">${escHtml(a.inputSummary)}</span>
+      </div>`;
     }
     html += '</div></div>';
   }
 
+  // Hints
   if (d.hints?.length) {
-    html += `<div class="hints">${d.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+    html += `<div class="detail-col full"><div class="hints-bar">${d.hints.map(h=>`<p>${escHtml(h)}</p>`).join('')}</div></div>`;
   }
 
+  html += '</div>';
   panel.innerHTML = html;
 }
 
@@ -325,54 +452,65 @@ async function loadPatterns() {
   const agentId = document.getElementById('agentSelect').value;
   const hoursBack = document.getElementById('hoursBack').value;
   const view = document.getElementById('patternsView');
-  view.innerHTML = '<div class="loading">Analyzing patterns...</div>';
-
+  view.innerHTML = '<div class="loading">Analyzing...</div>';
   const res = await fetch(`${API}/api/patterns?agentId=${agentId}&hoursBack=${hoursBack}`);
   const d = await res.json();
   renderPatterns(view, d);
 }
 
 function renderPatterns(view, d) {
-  let html = `<div class="patterns-panel">
-    <h2 style="margin-bottom:16px">Pattern Analysis: ${d.agentId} (${d.sessionsAnalyzed} sessions)</h2>`;
+  const maxCalls = Math.max(...Object.values(d.toolUsageDistribution||{}).map(s=>s.calls), 1);
+
+  let html = `<h2 style="margin-bottom:16px;font-size:18px">Pattern Analysis: <span style="color:var(--accent)">${d.agentId}</span> <span style="color:var(--text3);font-size:14px">(${d.sessionsAnalyzed} sessions)</span></h2>`;
+
+  html += '<div class="patterns-grid">';
 
   // Recurring errors
-  html += '<div class="pattern-section"><h3 style="color:var(--red)">Recurring Errors</h3>';
+  html += '<div class="pat-card"><h3 style="color:var(--red)">Recurring Errors</h3>';
   if (d.recurringErrors?.length) {
     for (const e of d.recurringErrors) {
-      html += `<div class="error-pattern">
-        <b>${escHtml(e.pattern)}</b> — ${e.occurrences} sessions<br>
-        <span style="color:var(--accent)">Suggestion: ${escHtml(e.suggestion)}</span>
+      html += `<div class="err-item">
+        <div class="pattern-name">${escHtml(e.pattern)}</div>
+        <div class="pattern-count">${e.occurrences} sessions</div>
+        <div class="pattern-fix">${escHtml(e.suggestion)}</div>
       </div>`;
     }
   } else {
-    html += '<p style="color:var(--text2)">No recurring error patterns found.</p>';
-  }
-  html += '</div>';
-
-  // Tool usage
-  html += '<div class="pattern-section"><h3>Tool Usage</h3>';
-  const tools = Object.entries(d.toolUsageDistribution || {}).sort((a,b) => b[1].calls - a[1].calls);
-  for (const [name, stat] of tools) {
-    const errRate = stat.errorRate > 0 ? `<span style="color:var(--red)">${Math.round(stat.errorRate * 100)}% error</span>` : '';
-    const dur = stat.avgDurationMs != null ? `avg ${stat.avgDurationMs}ms` : '';
-    html += `<div class="tool-stat-row">
-      <span class="name">${name}</span>
-      <span>${stat.calls} calls</span>
-      <span>${errRate}</span>
-      <span style="color:var(--text2)">${dur}</span>
-    </div>`;
+    html += '<p style="color:var(--text3);padding:16px 0">No recurring patterns</p>';
   }
   html += '</div>';
 
   // Cost
-  html += `<div class="pattern-section"><h3>Cost</h3>
-    <p>Total: <b>$${d.costTrend?.totalCost?.toFixed(2)}</b> | Avg/session: <b>$${d.costTrend?.avgPerSession?.toFixed(2)}</b></p>
-    ${d.costTrend?.mostExpensiveSession ? `<p style="color:var(--text2)">Most expensive: ${d.costTrend.mostExpensiveSession.key.slice(-50)}... ($${d.costTrend.mostExpensiveSession.cost.toFixed(2)})</p>` : ''}
+  html += `<div class="pat-card"><h3>Cost Overview</h3>
+    <div class="cost-big">$${d.costTrend?.totalCost?.toFixed(2)}</div>
+    <p style="color:var(--text2);margin-top:4px">total across ${d.sessionsAnalyzed} sessions</p>
+    <p style="margin-top:8px">Avg per session: <b>$${d.costTrend?.avgPerSession?.toFixed(2)}</b></p>
+    ${d.costTrend?.mostExpensiveSession ? `<p style="color:var(--text3);font-size:12px;margin-top:4px">Peak: $${d.costTrend.mostExpensiveSession.cost.toFixed(2)}</p>` : ''}
   </div>`;
 
+  // Tool usage with bars
+  html += `<div class="pat-card" style="grid-column:1/-1"><h3>Tool Usage Distribution</h3>`;
+  const tools = Object.entries(d.toolUsageDistribution||{}).sort((a,b)=>b[1].calls-a[1].calls);
+  for (const [name, stat] of tools) {
+    const cl = tc(name);
+    const pct = (stat.calls / maxCalls * 100).toFixed(0);
+    const errPct = stat.errorRate > 0 ? Math.round(stat.errorRate * 100) : 0;
+    const dur = stat.avgDurationMs != null ? `avg ${stat.avgDurationMs}ms` : '';
+
+    html += `<div class="tool-bar-row">
+      <span class="tb-name" style="color:${cl.fg}">${name}</span>
+      <div class="tb-bar">
+        <div class="tb-fill" style="width:${pct}%;background:${cl.fg};opacity:0.6"></div>
+      </div>
+      <span class="tb-label">${stat.calls} calls</span>
+      <span class="tb-label">${errPct > 0 ? `<span style="color:var(--red)">${errPct}% err</span>` : '<span style="color:var(--green)">0% err</span>'}</span>
+      <span class="tb-label" style="color:var(--text3)">${dur}</span>
+    </div>`;
+  }
+  html += '</div>';
+
   if (d.hints?.length) {
-    html += `<div class="hints">${d.hints.map(h => `<p>${escHtml(h)}</p>`).join('')}</div>`;
+    html += `<div class="pat-card" style="grid-column:1/-1"><div class="hints-bar">${d.hints.map(h=>`<p>${escHtml(h)}</p>`).join('')}</div></div>`;
   }
 
   html += '</div>';
@@ -381,7 +519,8 @@ function renderPatterns(view, d) {
 
 // ─── Utils ───────────────────────────────────────────────────────────
 
-function esc(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function esc(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function css(s) { return s.replace(/[^a-zA-Z0-9-]/g, '_'); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
