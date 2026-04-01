@@ -88,6 +88,17 @@ chain_patterns({ agentId: "hamster-collector", focus: "errors" })
    openclaw gateway restart
    ```
 
+## Web Interface
+
+The plugin also includes a built-in web dashboard to visualize session chains directly in your browser.
+
+To start the web server:
+```bash
+cd ~/.openclaw/local-plugins/session-chain-observer
+npm run serve
+```
+Then open [http://localhost:18790](http://localhost:18790) in your browser.
+
 ## Configuration
 
 | Option | Default | Description |
