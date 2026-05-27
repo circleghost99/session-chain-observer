@@ -1,5 +1,4 @@
-import { readSessionContent } from "./transcript-parser.js";
-import type { ContentRef, ParsedSession, Step, TokenUsage } from "./transcript-parser.js";
+import type { ParsedSession, Step } from "./transcript-parser.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -14,49 +13,43 @@ export type StepDetail = {
   sessionKey: string;
   step: number;
   toolCallId: string;
-  inferenceId: string;
   tool: string;
-  arguments: Record<string, unknown> | null;
-  argumentRef?: ContentRef;
+  arguments: Record<string, unknown>;
   result: Array<{ type: string; text: string }>;
-  resultRefs: ContentRef[];
   resultDetails: Record<string, unknown>;
   isError: boolean;
   parentThinking: string | null;
   reactionThinking: string | null;
-  tokenSummary: TokenUsage;
-  isSharedInferenceUsage: boolean;
   costContext: { thisTurn: number; cumulative: number };
   adjacentSteps: AdjacentStep[];
-  subagentSessionId?: string;
 };
 
 export type DetailOptions = {
   includeThinking?: boolean;
-  includeInput?: boolean;
-  includeOutput?: boolean;
   includeAdjacentSteps?: boolean;
   maxDetailChars?: number;
 };
 
 // ─── Builder ─────────────────────────────────────────────────────────
 
-export async function buildDetail(
+export function buildDetail(
   sessionKey: string,
   parsed: ParsedSession,
   stepNum: number,
   opts: DetailOptions = {},
-): Promise<StepDetail | null> {
+): StepDetail | null {
   const maxChars = opts.maxDetailChars ?? 8000;
-  const includeThinking = opts.includeThinking === true;
-  const includeInput = opts.includeInput !== false;
-  const includeOutput = opts.includeOutput !== false;
+  const includeThinking = opts.includeThinking !== false;
   const includeAdjacent = opts.includeAdjacentSteps !== false;
 
   const target = parsed.steps.find((s) => s.step === stepNum);
   if (!target) return null;
 
-  const result = includeOutput ? await readResultBlocks(parsed, target, maxChars) : [];
+  // Truncate result content
+  const result = target.resultContent.map((b) => ({
+    type: b.type,
+    text: b.text.length > maxChars ? b.text.slice(0, maxChars) + `\n...(truncated, ${b.text.length} total chars)` : b.text,
+  }));
 
   // Get thinking context
   let parentThinking: string | null = null;
@@ -82,7 +75,12 @@ export async function buildDetail(
   }
 
   // Cumulative cost up to this step
-  const cumulative = cumulativeCost(parsed, target.step);
+  let cumulative = 0;
+  for (const s of parsed.steps) {
+    if (s.step <= target.step) {
+      cumulative += s.costThisTurn;
+    }
+  }
 
   // Adjacent steps
   const adjacentSteps: AdjacentStep[] = [];
@@ -103,57 +101,19 @@ export async function buildDetail(
     sessionKey,
     step: target.step,
     toolCallId: target.toolCallId,
-    inferenceId: target.inferenceId,
     tool: target.tool,
-    arguments: includeInput ? target.arguments : null,
-    argumentRef: target.argumentRef,
+    arguments: target.arguments,
     result,
-    resultRefs: target.resultRefs,
     resultDetails: target.resultDetails,
     isError: target.isError,
     parentThinking,
     reactionThinking,
-    tokenSummary: target.tokenSummary,
-    isSharedInferenceUsage: target.isSharedInferenceUsage,
     costContext: {
       thisTurn: target.costThisTurn,
       cumulative: Math.round(cumulative * 10000) / 10000,
     },
     adjacentSteps,
-    subagentSessionId: target.subagentSessionId,
   };
-}
-
-async function readResultBlocks(parsed: ParsedSession, step: Step, maxChars: number): Promise<Array<{ type: string; text: string }>> {
-  const blocks = [];
-  for (const block of step.resultContent) {
-    const ref = block.ref;
-    let text = block.text;
-    if (ref) {
-      try {
-        const content = await readSessionContent(ref.refId, parsed.provider, 0, maxChars);
-        text = content.text + (content.hasMore ? `\n...(truncated, ${content.charCount} total chars)` : "");
-      } catch {
-        text = block.text;
-      }
-    }
-    if (text.length > maxChars) text = text.slice(0, maxChars) + `\n...(truncated, ${text.length} total chars)`;
-    blocks.push({ type: block.type, text });
-  }
-  return blocks;
-}
-
-function cumulativeCost(parsed: ParsedSession, throughStep: number): number {
-  const seen = new Set<string>();
-  let total = 0;
-  for (const step of parsed.steps) {
-    if (step.step > throughStep) continue;
-    if (seen.has(step.inferenceId)) continue;
-    seen.add(step.inferenceId);
-    const event = parsed.inferenceEvents.find((i) => i.inferenceId === step.inferenceId);
-    total += event?.costUsd ?? step.costThisTurn;
-  }
-  return total;
 }
 
 function summarizeInputShort(step: Step): string {
@@ -183,7 +143,7 @@ export function formatDetailText(detail: StepDetail): string {
 
   // Input
   lines.push("\nInput:");
-  const argsStr = detail.arguments === null ? "(input omitted)" : JSON.stringify(detail.arguments, null, 2);
+  const argsStr = JSON.stringify(detail.arguments, null, 2);
   const argsLines = argsStr.split("\n");
   for (const line of argsLines.slice(0, 20)) {
     lines.push(`  ${line}`);
@@ -218,10 +178,7 @@ export function formatDetailText(detail: StepDetail): string {
   }
 
   // Cost context
-  lines.push(
-    `\nTokens: ${detail.tokenSummary.totalReportedTokens.toLocaleString()} reported${detail.isSharedInferenceUsage ? " (shared inference usage)" : ""}`,
-  );
-  lines.push(`Cost: $${detail.costContext.thisTurn.toFixed(4)} this turn, $${detail.costContext.cumulative.toFixed(4)} cumulative`);
+  lines.push(`\nCost: $${detail.costContext.thisTurn.toFixed(4)} this turn, $${detail.costContext.cumulative.toFixed(4)} cumulative`);
 
   // Adjacent steps
   if (detail.adjacentSteps.length > 0) {

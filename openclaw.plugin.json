@@ -22,10 +22,6 @@
         "type": "number",
         "description": "Max chars for output summaries in chain_steps. Default: 200."
       },
-      "claudeSessionDir": {
-        "type": "string",
-        "description": "Optional Claude Code projects directory. Defaults to ${CLAUDE_CONFIG_DIR:-~/.claude}/projects."
-      },
       "debug": {
         "type": "boolean",
         "description": "Enable debug logging. Default: false."

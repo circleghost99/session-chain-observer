@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import { fileURLToPath } from "url";
 
-import { readSessionContent, resolveAnySession, listSessionsForAgent, parseTranscript, type ProviderId } from "./transcript-parser.ts";
+import { resolveSession, listSessionsForAgent, parseTranscript } from "./transcript-parser.ts";
 import { buildSummary, buildSummaryHints } from "./summary-builder.ts";
 import { buildStepList, buildStepListHints } from "./step-builder.ts";
 import { buildDetail, buildDetailHints } from "./detail-builder.ts";
@@ -34,12 +34,6 @@ function parseQuery(url: string): Record<string, string> {
   return params;
 }
 
-function providerFromQuery(q: Record<string, string>): ProviderId | undefined {
-  if (q.provider === "claude-code") return "claude-code";
-  if (q.provider === "openclaw") return "openclaw";
-  return undefined;
-}
-
 function listAgents(): string[] {
   const agentsDir = path.join(os.homedir(), ".openclaw", "agents");
   if (!fs.existsSync(agentsDir)) return [];
@@ -54,7 +48,7 @@ function listAgents(): string[] {
 
 // ─── Routes ──────────────────────────────────────────────────────────
 
-async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+function handleApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = req.url ?? "/";
   const pathname = url.split("?")[0];
   const q = parseQuery(url);
@@ -67,32 +61,24 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
   if (pathname === "/api/summary") {
     const sessionKey = q.sessionKey?.trim();
     const agentId = q.agentId?.trim();
-    const provider = providerFromQuery(q);
-    const sessionDir = q.sessionDir?.trim() || undefined;
     if (!sessionKey && !agentId) {
       jsonReply(res, { error: "Provide sessionKey or agentId" }, 400);
       return true;
     }
 
     const metas = sessionKey
-      ? []
-      : await listSessionsForAgent(agentId!, {
-          provider: provider ?? "openclaw",
+      ? (() => { const m = resolveSession(sessionKey); return m ? [m] : []; })()
+      : listSessionsForAgent(agentId!, {
           hoursBack: Number(q.hoursBack) || 72,
           limit: Number(q.limit) || 10,
-          sessionDir,
         });
-    if (sessionKey) {
-      const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-      if (resolved) metas.push(resolved.meta);
-    }
 
-    const summaries = (await Promise.all(metas.map(async (meta) => {
+    const summaries = metas.map((meta) => {
       try {
-        const parsed = await parseTranscript(meta, meta.provider, { sessionDir });
+        const parsed = parseTranscript(meta.sessionFile);
         return buildSummary(meta, parsed);
       } catch { return null; }
-    }))).filter(Boolean);
+    }).filter(Boolean);
 
     const filtered = q.statusFilter === "errors_only"
       ? summaries.filter((s: any) => s.errorSteps > 0)
@@ -104,15 +90,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
 
   if (pathname === "/api/steps") {
     const sessionKey = q.sessionKey?.trim();
-    const provider = providerFromQuery(q);
-    const sessionDir = q.sessionDir?.trim() || undefined;
     if (!sessionKey) { jsonReply(res, { error: "sessionKey required" }, 400); return true; }
 
-    const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-    if (!resolved) { jsonReply(res, { error: "Session not found" }, 404); return true; }
+    const meta = resolveSession(sessionKey);
+    if (!meta) { jsonReply(res, { error: "Session not found" }, 404); return true; }
 
-    const parsed = await parseTranscript(resolved.meta, resolved.meta.provider, { sessionDir });
-    const result = buildStepList(resolved.meta.sessionKey, parsed, {
+    const parsed = parseTranscript(meta.sessionFile);
+    const result = buildStepList(meta.sessionKey, parsed, {
       filter: q.filter || undefined,
       toolFilter: q.toolFilter || undefined,
       offset: q.offset ? Number(q.offset) : undefined,
@@ -126,21 +110,14 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
 
   if (pathname === "/api/detail") {
     const sessionKey = q.sessionKey?.trim();
-    const provider = providerFromQuery(q);
-    const sessionDir = q.sessionDir?.trim() || undefined;
     const step = Number(q.step);
     if (!sessionKey || isNaN(step)) { jsonReply(res, { error: "sessionKey and step required" }, 400); return true; }
 
-    const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-    if (!resolved) { jsonReply(res, { error: "Session not found" }, 404); return true; }
+    const meta = resolveSession(sessionKey);
+    if (!meta) { jsonReply(res, { error: "Session not found" }, 404); return true; }
 
-    const parsed = await parseTranscript(resolved.meta, resolved.meta.provider, { sessionDir });
-    const detail = await buildDetail(resolved.meta.sessionKey, parsed, step, {
-      includeThinking: q.includeThinking === "true",
-      includeInput: q.includeInput !== "false",
-      includeOutput: q.includeOutput !== "false",
-      maxDetailChars: Number(q.maxChars) || undefined,
-    });
+    const parsed = parseTranscript(meta.sessionFile);
+    const detail = buildDetail(meta.sessionKey, parsed, step);
     if (!detail) { jsonReply(res, { error: `Step ${step} not found` }, 404); return true; }
 
     jsonReply(res, { ...detail, hints: buildDetailHints(detail) });
@@ -149,28 +126,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse): P
 
   if (pathname === "/api/patterns") {
     const agentId = q.agentId?.trim();
-    const provider = providerFromQuery(q);
-    const sessionDir = q.sessionDir?.trim() || undefined;
     if (!agentId) { jsonReply(res, { error: "agentId required" }, 400); return true; }
 
-    const result = await analyzePatterns(agentId, {
-      provider: provider ?? "openclaw",
+    const result = analyzePatterns(agentId, {
       hoursBack: Number(q.hoursBack) || 168,
       limit: Number(q.limit) || 20,
       focus: q.focus || undefined,
-      sessionDir,
     });
 
     jsonReply(res, { ...result, hints: buildPatternHints(result) });
-    return true;
-  }
-
-  if (pathname === "/api/content") {
-    const refId = q.refId?.trim();
-    const provider = providerFromQuery(q);
-    if (!refId) { jsonReply(res, { error: "refId required" }, 400); return true; }
-    const content = await readSessionContent(refId, provider ?? "openclaw", q.start ? Number(q.start) : undefined, q.chars ? Number(q.chars) : undefined);
-    jsonReply(res, content);
     return true;
   }
 
@@ -207,9 +171,9 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
 
 // ─── Server ──────────────────────────────────────────────────────────
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
   if (req.url?.startsWith("/api/")) {
-    if (!(await handleApi(req, res))) {
+    if (!handleApi(req, res)) {
       jsonReply(res, { error: "Unknown endpoint" }, 404);
     }
   } else {

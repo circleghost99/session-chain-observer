@@ -1,4 +1,4 @@
-import type { ContentRef, ParsedSession, Step, ModelChange, TokenUsage } from "./transcript-parser.js";
+import type { ParsedSession, Step, ModelChange } from "./transcript-parser.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -6,24 +6,15 @@ export type StepRow = {
   step: number;
   turn: number;
   toolCallId: string;
-  inferenceId: string;
   tool: string;
   status: string;
   durationMs: number | null;
   inputSummary: string;
   outputSummary: string;
-  contentRefs: {
-    input?: ContentRef;
-    output: ContentRef[];
-    thinking?: ContentRef;
-  };
   exitCode: number | null;
   isError: boolean;
   costThisTurn: number;
   tokensThisTurn: number;
-  tokenSummary: TokenUsage;
-  isSharedInferenceUsage: boolean;
-  subagentSessionId?: string;
 };
 
 export type StepListResult = {
@@ -64,7 +55,7 @@ export function buildStepList(
   } else if (opts.filter === "slow") {
     filtered = filtered.filter((s) => (s.durationMs ?? 0) > 5000);
   } else if (opts.filter === "expensive") {
-    filtered = filtered.filter((s) => s.costThisTurn > 0.1 || s.tokenSummary.totalReportedTokens > 100_000);
+    filtered = filtered.filter((s) => s.costThisTurn > 0.1);
   }
 
   if (opts.toolFilter) {
@@ -92,24 +83,15 @@ export function buildStepList(
     step: step.step,
     turn: step.turn,
     toolCallId: step.toolCallId,
-    inferenceId: step.inferenceId,
     tool: step.tool,
     status: step.isError ? "error" : "ok",
     durationMs: step.durationMs,
     inputSummary: summarizeInput(step, inputMax),
     outputSummary: summarizeOutput(step, outputMax),
-    contentRefs: {
-      input: step.argumentRef,
-      output: step.resultRefs,
-      thinking: step.parentThinkingRef,
-    },
     exitCode: step.exitCode,
     isError: step.isError,
     costThisTurn: step.costThisTurn,
     tokensThisTurn: step.tokensThisTurn,
-    tokenSummary: step.tokenSummary,
-    isSharedInferenceUsage: step.isSharedInferenceUsage,
-    subagentSessionId: step.subagentSessionId,
   }));
 
   return {
@@ -202,7 +184,7 @@ export function formatStepListText(result: StepListResult): string {
 
   // Header
   lines.push(
-    ` #   Tool                Status  Dur(ms)   Cost          Tokens  Input                                          Output`,
+    ` #   Tool                Status  Dur(ms)   Cost      Input                                          Output`,
   );
   lines.push("-".repeat(130));
 
@@ -210,8 +192,7 @@ export function formatStepListText(result: StepListResult): string {
 
   for (const s of result.steps) {
     const dur = s.durationMs !== null ? String(s.durationMs) : "-";
-    const tokenStr = s.isSharedInferenceUsage ? `${s.tokensThisTurn.toLocaleString()}*` : s.tokensThisTurn.toLocaleString();
-    const costStr = s.costThisTurn === prevTurnCost && s.isSharedInferenceUsage ? "(same)" : `$${s.costThisTurn.toFixed(3)}`;
+    const costStr = s.costThisTurn === prevTurnCost ? "(same)" : `$${s.costThisTurn.toFixed(3)}`;
     prevTurnCost = s.costThisTurn;
 
     const status = s.isError ? "ERROR" : "ok";
@@ -219,7 +200,7 @@ export function formatStepListText(result: StepListResult): string {
     const output = s.outputSummary.slice(0, 45);
 
     lines.push(
-      `${String(s.step).padStart(3)}  ${s.tool.padEnd(18)} ${status.padEnd(7)} ${dur.padStart(7)}   ${costStr.padEnd(9)} ${tokenStr.padStart(10)} tok  ${input} ${output}`,
+      `${String(s.step).padStart(3)}  ${s.tool.padEnd(18)} ${status.padEnd(7)} ${dur.padStart(7)}   ${costStr.padEnd(9)} ${input} ${output}`,
     );
   }
 
@@ -257,12 +238,12 @@ export function buildStepListHints(result: StepListResult): string[] {
   }
 
   const expensiveSteps = result.steps
-    .filter((s) => s.costThisTurn > 0.1 || s.tokensThisTurn > 100_000)
-    .sort((a, b) => (b.costThisTurn || b.tokensThisTurn) - (a.costThisTurn || a.tokensThisTurn));
+    .filter((s) => s.costThisTurn > 0.1)
+    .sort((a, b) => b.costThisTurn - a.costThisTurn);
   if (expensiveSteps.length > 0) {
     const top = expensiveSteps[0];
     hints.push(
-      `Step ${top.step} (${top.tool}) used ${top.tokensThisTurn.toLocaleString()} reported tokens${top.isSharedInferenceUsage ? " shared with sibling tool calls" : ""}. Use chain_detail to investigate.`,
+      `Step ${top.step} (${top.tool}) cost $${top.costThisTurn.toFixed(3)} — the most expensive turn. Use chain_detail to investigate.`,
     );
   }
 

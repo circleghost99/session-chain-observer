@@ -1,9 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import {
-  readSessionContent,
-  resolveAnySession,
-  type ProviderId,
+  resolveSession,
   listSessionsForAgent,
   parseTranscript,
 } from "./transcript-parser.js";
@@ -32,15 +30,8 @@ type PluginConfig = {
   maxDetailChars?: number;
   summaryInputChars?: number;
   summaryOutputChars?: number;
-  claudeSessionDir?: string;
   debug?: boolean;
 };
-
-function providerParam(params: any): ProviderId | undefined {
-  if (params.provider === "claude-code") return "claude-code";
-  if (params.provider === "openclaw") return "openclaw";
-  return undefined;
-}
 
 export default function register(api: OpenClawPluginApi) {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
@@ -70,14 +61,6 @@ export default function register(api: OpenClawPluginApi) {
               "Agent ID to scan recent sessions for. Returns summaries for the last N sessions. Mutually exclusive with sessionKey.",
           }),
         ),
-        provider: Type.Optional(
-          stringEnum(["openclaw", "claude-code"] as const),
-        ),
-        sessionDir: Type.Optional(
-          Type.String({
-            description: "Optional provider-specific session directory. For Claude Code, this points at the projects directory or a custom CLAUDE_CONFIG_DIR/projects equivalent.",
-          }),
-        ),
         limit: Type.Optional(
           Type.Number({
             description: "When using agentId, max sessions to return. Default: 5.",
@@ -94,8 +77,6 @@ export default function register(api: OpenClawPluginApi) {
       }),
       async execute(_toolCallId: string, params: any) {
         try {
-          const provider = providerParam(params);
-          const sessionDir = String(params.sessionDir ?? cfg.claudeSessionDir ?? "").trim() || undefined;
           const sessionKey = String(params.sessionKey ?? "").trim();
           const agentId = String(params.agentId ?? "").trim();
 
@@ -109,19 +90,13 @@ export default function register(api: OpenClawPluginApi) {
           const metas =
             sessionKey
               ? (() => {
-                  return [];
+                  const m = resolveSession(sessionKey);
+                  return m ? [m] : [];
                 })()
-              : await listSessionsForAgent(agentId, {
-                  provider: provider ?? "openclaw",
+              : listSessionsForAgent(agentId, {
                   hoursBack: params.hoursBack,
                   limit: params.limit,
-                  sessionDir,
                 });
-
-          if (sessionKey) {
-            const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-            if (resolved) metas.push(resolved.meta);
-          }
 
           if (metas.length === 0) {
             return {
@@ -133,7 +108,7 @@ export default function register(api: OpenClawPluginApi) {
           const summaries = [];
           for (const meta of metas) {
             try {
-              const parsed = await parseTranscript(meta, meta.provider, { sessionDir });
+              const parsed = parseTranscript(meta.sessionFile);
               summaries.push(buildSummary(meta, parsed));
             } catch (err: any) {
               if (debug) api.logger.error?.(`[session-chain-observer] Parse error: ${err.message}`);
@@ -184,10 +159,6 @@ export default function register(api: OpenClawPluginApi) {
         sessionKey: Type.String({
           description: "Session key or session ID. Required.",
         }),
-        provider: Type.Optional(
-          stringEnum(["openclaw", "claude-code"] as const),
-        ),
-        sessionDir: Type.Optional(Type.String()),
         filter: Type.Optional(
           stringEnum(["all", "errors", "slow", "expensive"] as const),
         ),
@@ -212,8 +183,6 @@ export default function register(api: OpenClawPluginApi) {
       async execute(_toolCallId: string, params: any) {
         try {
           const sessionKey = String(params.sessionKey ?? "").trim();
-          const provider = providerParam(params);
-          const sessionDir = String(params.sessionDir ?? cfg.claudeSessionDir ?? "").trim() || undefined;
           if (!sessionKey) {
             return {
               content: [{ type: "text", text: "Error: sessionKey is required." }],
@@ -221,16 +190,16 @@ export default function register(api: OpenClawPluginApi) {
             };
           }
 
-          const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-          if (!resolved) {
+          const meta = resolveSession(sessionKey);
+          if (!meta) {
             return {
               content: [{ type: "text", text: `Session not found: ${sessionKey}` }],
               details: { error: "session_not_found" },
             };
           }
 
-          const parsed = await parseTranscript(resolved.meta, resolved.meta.provider, { sessionDir });
-          const result = buildStepList(resolved.meta.sessionKey, parsed, {
+          const parsed = parseTranscript(meta.sessionFile);
+          const result = buildStepList(meta.sessionKey, parsed, {
             filter: params.filter,
             toolFilter: params.toolFilter,
             offset: params.offset,
@@ -270,22 +239,15 @@ export default function register(api: OpenClawPluginApi) {
         sessionKey: Type.String({
           description: "Session key or session ID. Required.",
         }),
-        provider: Type.Optional(
-          stringEnum(["openclaw", "claude-code"] as const),
-        ),
-        sessionDir: Type.Optional(Type.String()),
         step: Type.Number({
           description: "Step number (from chain_steps). Required.",
         }),
         includeThinking: Type.Optional(
           Type.Boolean({
             description:
-              "Include agent thinking from before and after this step. Default: false.",
+              "Include agent thinking from before and after this step. Default: true.",
           }),
         ),
-        includeInput: Type.Optional(Type.Boolean()),
-        includeOutput: Type.Optional(Type.Boolean()),
-        maxChars: Type.Optional(Type.Number()),
         includeAdjacentSteps: Type.Optional(
           Type.Boolean({
             description:
@@ -296,8 +258,6 @@ export default function register(api: OpenClawPluginApi) {
       async execute(_toolCallId: string, params: any) {
         try {
           const sessionKey = String(params.sessionKey ?? "").trim();
-          const provider = providerParam(params);
-          const sessionDir = String(params.sessionDir ?? cfg.claudeSessionDir ?? "").trim() || undefined;
           const step = Number(params.step);
 
           if (!sessionKey || isNaN(step)) {
@@ -307,21 +267,19 @@ export default function register(api: OpenClawPluginApi) {
             };
           }
 
-          const resolved = await resolveAnySession(sessionKey, provider, { sessionDir });
-          if (!resolved) {
+          const meta = resolveSession(sessionKey);
+          if (!meta) {
             return {
               content: [{ type: "text", text: `Session not found: ${sessionKey}` }],
               details: { error: "session_not_found" },
             };
           }
 
-          const parsed = await parseTranscript(resolved.meta, resolved.meta.provider, { sessionDir });
-          const detail = await buildDetail(resolved.meta.sessionKey, parsed, step, {
+          const parsed = parseTranscript(meta.sessionFile);
+          const detail = buildDetail(meta.sessionKey, parsed, step, {
             includeThinking: params.includeThinking,
-            includeInput: params.includeInput,
-            includeOutput: params.includeOutput,
             includeAdjacentSteps: params.includeAdjacentSteps,
-            maxDetailChars: params.maxChars ?? cfg.maxDetailChars,
+            maxDetailChars: cfg.maxDetailChars,
           });
 
           if (!detail) {
@@ -366,10 +324,6 @@ export default function register(api: OpenClawPluginApi) {
         agentId: Type.String({
           description: "Agent ID to analyze. Required.",
         }),
-        provider: Type.Optional(
-          stringEnum(["openclaw", "claude-code"] as const),
-        ),
-        sessionDir: Type.Optional(Type.String()),
         hoursBack: Type.Optional(
           Type.Number({
             description:
@@ -388,8 +342,6 @@ export default function register(api: OpenClawPluginApi) {
       async execute(_toolCallId: string, params: any) {
         try {
           const agentId = String(params.agentId ?? "").trim();
-          const provider = providerParam(params);
-          const sessionDir = String(params.sessionDir ?? cfg.claudeSessionDir ?? "").trim() || undefined;
           if (!agentId) {
             return {
               content: [{ type: "text", text: "Error: agentId is required." }],
@@ -397,12 +349,10 @@ export default function register(api: OpenClawPluginApi) {
             };
           }
 
-          const result = await analyzePatterns(agentId, {
-            provider: provider ?? "openclaw",
+          const result = analyzePatterns(agentId, {
             hoursBack: params.hoursBack,
             limit: params.limit,
             focus: params.focus,
-            sessionDir,
           });
 
           if (result.sessionsAnalyzed === 0) {
@@ -435,46 +385,5 @@ export default function register(api: OpenClawPluginApi) {
     {},
   );
 
-  // ─── Tool 5: chain_content (Lazy content expansion) ────────────────
-
-  api.registerTool(
-    () => ({
-      name: "chain_content",
-      label: "Chain Content",
-      description:
-        "Read a specific lazy content reference returned by chain_steps or chain_detail. Use this for large tool inputs/outputs instead of loading raw transcript content.",
-      parameters: Type.Object({
-        refId: Type.String({ description: "Content reference ID from chain_steps or chain_detail." }),
-        provider: Type.Optional(
-          stringEnum(["openclaw", "claude-code"] as const),
-        ),
-        start: Type.Optional(Type.Number({ description: "Start character offset. Default: 0." })),
-        chars: Type.Optional(Type.Number({ description: "Number of characters to return. Default: 8000." })),
-      }),
-      async execute(_toolCallId: string, params: any) {
-        try {
-          const provider = providerParam(params) ?? "openclaw";
-          const content = await readSessionContent(
-            String(params.refId ?? ""),
-            provider,
-            params.start,
-            params.chars ?? cfg.maxDetailChars,
-          );
-          const suffix = content.hasMore ? `\n\n...(more available from start=${content.end})` : "";
-          return {
-            content: [{ type: "text", text: content.text + suffix }],
-            details: content,
-          };
-        } catch (err: any) {
-          return {
-            content: [{ type: "text", text: `Error: ${err.message}` }],
-            details: { error: err.message },
-          };
-        }
-      },
-    }),
-    {},
-  );
-
-  api.logger.info?.("[session-chain-observer] Registered tools: chain_summary, chain_steps, chain_detail, chain_patterns, chain_content");
+  api.logger.info?.("[session-chain-observer] Registered 4 tools: chain_summary, chain_steps, chain_detail, chain_patterns");
 }
