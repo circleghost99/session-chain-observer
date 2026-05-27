@@ -1,3 +1,4 @@
+import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "./src/model.js";
 import type { ParsedSession, SessionMeta } from "./transcript-parser.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ export type FailedTool = {
 };
 
 export type SessionSummary = {
+  provider: string;
   sessionKey: string;
   sessionId: string;
   status: string;
@@ -18,11 +20,13 @@ export type SessionSummary = {
   runtimeMs: number;
   model: string;
   totalTokens: number;
+  tokenSummary: TokenUsage;
   estimatedCostUsd: number;
   totalSteps: number;
   errorSteps: number;
   toolBreakdown: Record<string, number>;
   failedTools: FailedTool[];
+  subagentCount: number;
   skillsUsed: string[];
   userMessageCount: number;
 };
@@ -45,8 +49,14 @@ export function buildSummary(meta: SessionMeta, parsed: ParsedSession): SessionS
   }
 
   const outcome = deriveOutcome(errorSteps, parsed.steps.length, meta.abortedLastRun);
+  const tokenSummary = parsed.inferenceEvents.reduce(
+    (acc, event) => addTokenUsage(acc, event.tokenUsage),
+    emptyTokenUsage(),
+  );
+  const estimatedCostUsd = parsed.inferenceEvents.reduce((acc, event) => acc + event.costUsd, 0) || meta.estimatedCostUsd;
 
   return {
+    provider: meta.provider,
     sessionKey: meta.sessionKey,
     sessionId: meta.sessionId,
     status: meta.status,
@@ -54,13 +64,15 @@ export function buildSummary(meta: SessionMeta, parsed: ParsedSession): SessionS
     startedAt: parsed.startedAt || new Date(meta.startedAt).toISOString(),
     endedAt: parsed.endedAt || new Date(meta.endedAt).toISOString(),
     runtimeMs: meta.runtimeMs,
-    model: meta.model,
-    totalTokens: meta.totalTokens,
-    estimatedCostUsd: meta.estimatedCostUsd,
+    model: parsed.currentModel || meta.model,
+    totalTokens: tokenSummary.totalReportedTokens || meta.totalTokens,
+    tokenSummary,
+    estimatedCostUsd,
     totalSteps: parsed.steps.length,
     errorSteps,
     toolBreakdown,
     failedTools,
+    subagentCount: parsed.subagents.length,
     skillsUsed: meta.skillsUsed,
     userMessageCount: parsed.userMessageCount,
   };
@@ -107,8 +119,15 @@ function formatOneSummary(s: SessionSummary): string {
   );
 
   const dur = s.runtimeMs > 0 ? `${(s.runtimeMs / 1000).toFixed(1)}s` : "?";
-  lines.push(`Duration: ${dur} | Model: ${s.model} | Cost: $${s.estimatedCostUsd.toFixed(2)}`);
-  lines.push(`Tokens: ${s.totalTokens.toLocaleString()} | User messages: ${s.userMessageCount}`);
+  lines.push(`Provider: ${s.provider} | Duration: ${dur} | Model: ${s.model} | Cost: $${s.estimatedCostUsd.toFixed(2)}`);
+  lines.push(
+    `Tokens: ${s.totalTokens.toLocaleString()} (${s.tokenSummary.tokenSource}) | in ${s.tokenSummary.inputTokens.toLocaleString()} / out ${s.tokenSummary.outputTokens.toLocaleString()} / cache ${(
+      s.tokenSummary.cacheCreationInputTokens + s.tokenSummary.cacheReadInputTokens
+    ).toLocaleString()} | User messages: ${s.userMessageCount}`,
+  );
+  if (s.subagentCount > 0) {
+    lines.push(`Subagents: ${s.subagentCount}`);
+  }
 
   const breakdown = Object.entries(s.toolBreakdown)
     .sort(([, a], [, b]) => b - a)

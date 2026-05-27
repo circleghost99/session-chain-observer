@@ -1,4 +1,4 @@
-import type { SessionMeta } from "./transcript-parser.js";
+import type { ProviderId } from "./transcript-parser.js";
 import { parseTranscript, listSessionsForAgent } from "./transcript-parser.js";
 import { buildSummary, type SessionSummary } from "./summary-builder.js";
 
@@ -31,6 +31,8 @@ export type PatternResult = {
 };
 
 export type PatternOptions = {
+  provider?: ProviderId;
+  sessionDir?: string;
   hoursBack?: number;
   limit?: number;
   focus?: string;
@@ -38,16 +40,16 @@ export type PatternOptions = {
 
 // ─── Analyzer ────────────────────────────────────────────────────────
 
-export function analyzePatterns(agentId: string, opts: PatternOptions = {}): PatternResult {
+export async function analyzePatterns(agentId: string, opts: PatternOptions = {}): Promise<PatternResult> {
   const hoursBack = opts.hoursBack ?? 168;
   const limit = opts.limit ?? 20;
 
-  const sessions = listSessionsForAgent(agentId, { hoursBack, limit });
+  const sessions = await listSessionsForAgent(agentId, { provider: opts.provider, hoursBack, limit, sessionDir: opts.sessionDir });
   const summaries: SessionSummary[] = [];
 
   for (const meta of sessions) {
     try {
-      const parsed = parseTranscript(meta.sessionFile);
+      const parsed = await parseTranscript(meta, meta.provider, { sessionDir: opts.sessionDir });
       summaries.push(buildSummary(meta, parsed));
     } catch {
       continue;
@@ -64,7 +66,7 @@ export function analyzePatterns(agentId: string, opts: PatternOptions = {}): Pat
 
   for (const meta of sessions) {
     try {
-      const parsed = parseTranscript(meta.sessionFile);
+      const parsed = await parseTranscript(meta, meta.provider, { sessionDir: opts.sessionDir });
       for (const step of parsed.steps) {
         if (!toolStats[step.tool]) {
           toolStats[step.tool] = { calls: 0, errors: 0, durations: [] };

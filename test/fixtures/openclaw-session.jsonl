@@ -1,0 +1,4 @@
+{"type":"session","id":"open-1","cwd":"/tmp/openclaw","timestamp":"2026-01-01T00:00:00.000Z"}
+{"type":"message","timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"user","content":"run a command"}}
+{"type":"message","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"assistant","model":"test-model","usage":{"totalTokens":30,"inputTokens":20,"outputTokens":10,"cost":{"total":0.02}},"content":[{"type":"thinking","text":"Need to inspect the command."},{"type":"toolCall","id":"call-open-1","name":"exec","arguments":{"command":"printf ok"}}]}}
+{"type":"message","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"toolResult","toolCallId":"call-open-1","toolName":"exec","isError":false,"details":{"exitCode":0,"durationMs":12},"content":[{"type":"text","text":"ok\n"}]}}

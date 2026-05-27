@@ -7,9 +7,13 @@
     "extensions": ["./index.ts"]
   },
   "scripts": {
-    "serve": "npx tsx server.ts"
+    "serve": "npx tsx server.ts",
+    "test": "tsx test/session-chain-observer.test.ts"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
   }
 }

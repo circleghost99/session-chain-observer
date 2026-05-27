@@ -159,6 +159,13 @@
 <div class="header">
   <h1>Session Chain Observer</h1>
   <div class="ctrl">
+    <label>Provider</label>
+    <select id="providerSelect" style="min-width:130px" onchange="loadSummary()">
+      <option value="openclaw">OpenClaw</option>
+      <option value="claude-code">Claude Code</option>
+    </select>
+  </div>
+  <div class="ctrl">
     <select id="agentSelect" style="min-width:160px"><option value="">Loading...</option></select>
   </div>
   <div class="ctrl">
@@ -206,6 +213,10 @@ let expandedSession = null;
 let expandedStep = null;
 let stepsCache = {};
 
+function providerQS() {
+  return `provider=${encodeURIComponent(document.getElementById('providerSelect').value)}`;
+}
+
 function timeAgo(iso) {
   if (!iso) return '';
   const d = new Date(iso), now = Date.now(), diff = now - d.getTime();
@@ -240,7 +251,7 @@ async function loadSummary() {
   const view = document.getElementById('sessionsView');
   view.innerHTML = '<div class="loading">Loading...</div>';
 
-  const res = await fetch(`${API}/api/summary?agentId=${agentId}&hoursBack=${hoursBack}&limit=${limit}`);
+  const res = await fetch(`${API}/api/summary?${providerQS()}&agentId=${encodeURIComponent(agentId || 'claude-code')}&hoursBack=${hoursBack}&limit=${limit}`);
   const data = await res.json();
   currentSessions = data.sessions || [];
   expandedSession = null;
@@ -271,7 +282,8 @@ function renderSessions() {
         ${s.errorSteps > 0 ? `<span class="metric" style="color:var(--red)"><span class="icon">&#10007;</span> <b>${s.errorSteps}</b> errors</span>` : ''}
         <span class="metric"><span class="icon">&#9201;</span> <b>${dur}</b></span>
         <span class="metric"><span class="icon">&#128176;</span> <b>$${s.estimatedCostUsd?.toFixed(2)}</b></span>
-        <span class="metric">Tokens: <b>${(s.totalTokens/1000).toFixed(0)}k</b></span>
+        <span class="metric">Tokens: <b>${(s.totalTokens/1000).toFixed(1)}k</b></span>
+        ${s.subagentCount ? `<span class="metric">Subagents: <b>${s.subagentCount}</b></span>` : ''}
         <span class="metric">Model: <b>${s.model}</b></span>
       </div>
       <div class="tools-bar">
@@ -314,7 +326,7 @@ async function loadSteps(sk, filter) {
   if (!panel) return;
   panel.innerHTML = '<div class="loading">Loading...</div>';
 
-  let url = `${API}/api/steps?sessionKey=${encodeURIComponent(sk)}&limit=500`;
+  let url = `${API}/api/steps?${providerQS()}&sessionKey=${encodeURIComponent(sk)}&limit=500`;
   if (filter && filter !== 'all') url += `&filter=${filter}`;
   const res = await fetch(url);
   const data = await res.json();
@@ -348,7 +360,7 @@ function renderTimeline(panel, sk, data, currentFilter) {
           <span class="tl-tool" style="background:${cl.bg};color:${cl.fg}">${s.tool}</span>
           <span class="tl-status ${isErr ? 'error' : 'ok'}">${isErr ? 'ERROR' : 'OK'}</span>
           ${s.durationMs != null ? `<span class="tl-dur">${s.durationMs}ms</span>` : ''}
-          <span class="tl-cost">$${s.costThisTurn?.toFixed(3)} &middot; ${(s.tokensThisTurn/1000).toFixed(1)}k tok</span>
+          <span class="tl-cost" style="${s.tokensThisTurn > 100000 ? 'color:var(--orange)' : ''}">$${s.costThisTurn?.toFixed(3)} &middot; ${(s.tokensThisTurn/1000).toFixed(1)}k tok${s.isSharedInferenceUsage ? ' *' : ''}</span>
         </div>
         <div class="tl-io">
           <span class="tl-input" title="${escAttr(s.inputSummary)}">${escHtml(s.inputSummary)}</span>
@@ -381,7 +393,7 @@ function toggleDetail(sk, step, ev) {
 async function loadDetail(sk, step) {
   const panel = document.getElementById('detail-' + step);
   if (!panel) return;
-  const res = await fetch(`${API}/api/detail?sessionKey=${encodeURIComponent(sk)}&step=${step}`);
+  const res = await fetch(`${API}/api/detail?${providerQS()}&sessionKey=${encodeURIComponent(sk)}&step=${step}`);
   const d = await res.json();
   renderDetail(panel, d);
 }
@@ -398,6 +410,7 @@ function renderDetail(panel, d) {
       ${d.resultDetails?.exitCode !== undefined ? `<span class="meta-pill">exit: ${d.resultDetails.exitCode}</span>` : ''}
       ${d.resultDetails?.durationMs !== undefined ? `<span class="meta-pill">${d.resultDetails.durationMs}ms</span>` : ''}
       ${d.costContext ? `<span class="meta-pill">$${d.costContext.thisTurn?.toFixed(4)} this turn</span><span class="meta-pill">$${d.costContext.cumulative?.toFixed(4)} cumulative</span>` : ''}
+      ${d.tokenSummary ? `<span class="meta-pill">${Math.round((d.tokenSummary.totalReportedTokens||0)/1000*10)/10}k tok${d.isSharedInferenceUsage ? ' shared' : ''}</span>` : ''}
     </div>
   </div>`;
 
@@ -409,7 +422,7 @@ function renderDetail(panel, d) {
 
   // Right: Output
   const outText = (d.result||[]).map(b=>b.text).join('\\n');
-  html += `<div class="detail-col"><div class="detail-section"><h4>Output</h4><pre${isErr ? ' style="border-color:rgba(248,113,113,0.3)"' : ''}>${escHtml(outText)}</pre></div></div>`;
+  html += `<div class="detail-col"><div class="detail-section"><h4>Output</h4><pre${isErr ? ' style="border-color:rgba(248,113,113,0.3)"' : ''}>${escHtml(outText)}</pre>${renderContentButtons(d.resultRefs)}</div></div>`;
 
   // Thinking (before)
   if (d.parentThinking) {
@@ -453,7 +466,7 @@ async function loadPatterns() {
   const hoursBack = document.getElementById('hoursBack').value;
   const view = document.getElementById('patternsView');
   view.innerHTML = '<div class="loading">Analyzing...</div>';
-  const res = await fetch(`${API}/api/patterns?agentId=${agentId}&hoursBack=${hoursBack}`);
+  const res = await fetch(`${API}/api/patterns?${providerQS()}&agentId=${encodeURIComponent(agentId || 'claude-code')}&hoursBack=${hoursBack}`);
   const d = await res.json();
   renderPatterns(view, d);
 }
@@ -523,6 +536,18 @@ function esc(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function css(s) { return s.replace(/[^a-zA-Z0-9-]/g, '_'); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderContentButtons(refs) {
+  if (!refs?.length) return '';
+  return refs.map((ref, i) => `<button class="btn" style="margin-top:8px;background:var(--bg3);color:var(--text)" onclick="loadContentRef('${esc(ref.refId)}', event)">Load ref ${i + 1} (${Math.round((ref.charCount || 0)/1000)}k chars)</button>`).join('');
+}
+
+async function loadContentRef(refId, ev) {
+  ev?.stopPropagation();
+  const res = await fetch(`${API}/api/content?${providerQS()}&refId=${encodeURIComponent(refId)}&chars=20000`);
+  const data = await res.json();
+  alert(data.text || data.error || '');
+}
 
 init();
 </script>
